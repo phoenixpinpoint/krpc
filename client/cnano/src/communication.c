@@ -4,45 +4,99 @@
 
 #if defined(KRPC_COMMUNICATION_POSIX)
 
-#include <fcntl.h>
-#include <stdint.h>
-#include <unistd.h>
+  #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__)
+  #include <windows.h>
+  #include <stdint.h>
 
-krpc_error_t krpc_open(krpc_connection_t * connection, const krpc_connection_config_t * arg) {
-  const char * port = arg;
-  int fd = open(port, O_RDWR | O_NOCTTY);
-  if (fd < 0)
-    KRPC_RETURN_ERROR(IO, "failed to open serial port");
-  *connection = fd;
-  return KRPC_OK;
-}
-
-krpc_error_t krpc_close(krpc_connection_t connection) {
-  close(connection);
-  return KRPC_OK;
-}
-
-krpc_error_t krpc_read(krpc_connection_t connection, uint8_t * buf, size_t count) {
-  size_t total = 0;
-  while (total < count) {
-    int result = read(connection, buf, count);
-    if (result == -1) {
-      KRPC_RETURN_ERROR(IO, "read failed");
-    } else if (result == 0) {
-      KRPC_RETURN_ERROR(EOF, "eof received");
-    } else {
-      total += result;
+  krpc_error_t krpc_open(krpc_connection_t *connection,const krpc_connection_config_t *arg){
+    const char* port = arg;
+    HANDLE hComm = CreateFileA(port,GENERIC_READ|GENERIC_WRITE,0,NULL,OPEN_EXISTING,0,NULL);
+    if(hComm ==INVALID_HANDLE_VALUE){
+      KRPC_RETURN_ERROR(IO,"failed to open serial port");
     }
+    *connection=hComm;
+    return KRPC_OK;
   }
-  return KRPC_OK;
-}
 
-krpc_error_t krpc_write(krpc_connection_t connection, const uint8_t * buf, size_t count) {
-  if (count != write(connection, buf, count))
-    KRPC_RETURN_ERROR(IO, "write failed");
-  return KRPC_OK;
-}
+  krpc_error_t krpc_close(krpc_connection_t connection){
+    if(!CloseHandle(connection)){
+      KRPC_RETURN_ERROR(IO,"failed to close serial port");
+    }
+    return KRPC_OK;
+  }
 
+  krpc_error_t krpc_read(krpc_connection_t connection,uint8_t *buf,size_t count){
+    DWORD bytesRead=0;
+    size_t total=0;
+    while(total<count){
+      if(!ReadFile(connection, buf+total, count-total, &bytesRead, NULL)){
+        KRPC_RETURN_ERROR(IO,"read failed");
+      }
+      if(bytesRead == 0){
+        KRPC_RETURN_ERROR(EOF,"eof received");
+      }
+      total+=bytesRead;
+    }
+    return KRPC_OK;
+  }
+
+  krpc_error_t krpc_write(krpc_connection_t connection,const uint8_t *buf,size_t count){
+    DWORD bytesWritten=0;
+    if(!WriteFile(connection,buf,count,&bytesWritten,NULL)||bytesWritten!=count){
+      KRPC_RETURN_ERROR(IO,"write failed");
+    }
+    return KRPC_OK;
+  }
+
+  #else
+
+  #include <fcntl.h>
+  #include <stdint.h>
+  #include <unistd.h>
+
+  krpc_error_t krpc_open(krpc_connection_t * connection, const krpc_connection_config_t * arg) {
+    const char * port = arg;
+    int fd = open(port, O_RDWR | O_NOCTTY);
+    if (fd < 0)
+      KRPC_RETURN_ERROR(IO, "failed to open serial port");
+    *connection = fd;
+    return KRPC_OK;
+  }
+
+  krpc_error_t krpc_close(krpc_connection_t connection){
+    if(!CloseHandle(connection)){
+      KRPC_RETURN_ERROR(IO,"failed to close serial port");
+    }
+    return KRPC_OK;
+  }
+
+  krpc_error_t krpc_close(krpc_connection_t connection) {
+    close(connection);
+    return KRPC_OK;
+  }
+
+  krpc_error_t krpc_read(krpc_connection_t connection, uint8_t * buf, size_t count) {
+    size_t total = 0;
+    while (total < count) {
+      int result = read(connection, buf, count);
+      if (result == -1) {
+        KRPC_RETURN_ERROR(IO, "read failed");
+      } else if (result == 0) {
+        KRPC_RETURN_ERROR(EOF, "eof received");
+      } else {
+        total += result;
+      }
+    }
+    return KRPC_OK;
+  }
+
+  krpc_error_t krpc_write(krpc_connection_t connection, const uint8_t * buf, size_t count) {
+    if (count != write(connection, buf, count))
+      KRPC_RETURN_ERROR(IO, "write failed");
+    return KRPC_OK;
+  }
+
+  #endif
 #endif
 
 #if defined(KRPC_COMMUNICATION_ARDUINO)
